@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="ja-JP">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>給与明細</title>
+    
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+    
+    <!-- Bootstrap Icons -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+
+    <!-- PDF Generation Libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+    <style>
+        /* --- Base Layout & Font Size (No Changes) --- */
+        body {
+            font-size: 13px;
+            background-color: #f8f9fa;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "Liberation Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+            overflow: hidden;
+        }
+        .main-container { height: 100vh; display: flex; flex-direction: column; }
+        .content-row { flex-grow: 1; min-height: 0; }
+        .full-height-col { display: flex; flex-direction: column; height: 100%; }
+        .card-stretch { flex-grow: 1; display: flex; flex-direction: column; min-height: 0; }
+        .card-body-scrollable { overflow-y: auto; }
+
+        /* --- Custom Component Styles (No Changes) --- */
+        .card { border: none; box-shadow: 0 0.1rem 0.2rem rgba(0, 0, 0, 0.07); }
+        .title-main { font-weight: 700; font-size: 2rem; }
+        .section-title { font-size: 1rem; color: #6c757d; font-weight: 500; }
+        .summary-card .card-title { font-size: 1rem; }
+        .summary-card .summary-item-label { color: #6c757d; }
+        .summary-card .total-pay { font-size: 2rem; font-weight: 700; }
+        .summary-card .summary-item { display: flex; justify-content: space-between; font-size: 0.8rem; font-weight: 500; }
+        .action-button-card { cursor: pointer; transition: background-color 0.2s ease-in-out; font-size: 0.7rem; }
+        .action-button-card:hover { background-color: #e9ecef; }
+        .action-button-card i { font-size: 1.1rem; }
+        .form-label { margin-bottom: 0.1rem; color: #6c757d; font-size: 0.75rem; }
+        .log-table { font-size: 0.8rem; }
+        .log-table th, .log-table td { white-space: nowrap; vertical-align: middle; padding: 0.4rem; }
+        .log-table thead { position: sticky; top: 0; background: white; z-index: 1; }
+        .log-table .bi-trash { cursor: pointer; color: #6c757d; }
+        
+        /* Styles for the NEW PDF template table */
+        .pdf-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+            font-size: 9pt;
+        }
+        .pdf-table th, .pdf-table td {
+            border: 1px solid #999;
+            padding: 6px;
+            text-align: center;
+        }
+        .pdf-table th {
+            background-color: #f2f2f2;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container-fluid p-2 main-container">
+        <!-- Top Row: Titles & Summaries (No Changes) -->
+        <div class="row mb-4">
+            <div class="col-3 d-flex flex-column justify-content-center">
+                <h1 class="title-main mb-0 ps-1">給与明細</h1>
+            </div>
+            <div class="col-9">
+                <div class="row align-items-stretch">
+                    <div class="col">
+                        <div class="card h-100">
+                            <div class="card-body p-3 d-flex flex-column">
+                                <div class="row gx-2">
+                                    <div class="col"><label class="form-label">通常時給</label><div class="input-group input-group-sm"><input type="number" id="regularRate" class="form-control" placeholder="0"><span class="input-group-text">¥</span></div></div>
+                                    <div class="col"><label class="form-label">深夜時給</label><div class="input-group input-group-sm"><input type="number" id="nightRate" class="form-control" placeholder="0"><span class="input-group-text">¥</span></div></div>
+                                </div>
+                                <div class="mb-1"><label class="form-label">計算期間</label><div class="row gx-1 align-items-center"><div class="col"><div class="input-group input-group-sm"><input type="date" id="startDate" class="form-control"></div></div><div class="col-auto px-0"><span>-</span></div><div class="col"><div class="input-group input-group-sm"><input type="date" id="endDate" class="form-control"></div></div></div></div>
+                                <div class="row gx-2">
+                                    <div class="col"><label class="form-label">交通費 (日額)</label><div class="input-group input-group-sm"><input type="number" id="transportFee" class="form-control" placeholder="0"><span class="input-group-text">¥</span></div></div>
+                                    <div class="col"><label class="form-label">手当 (月額)</label><div class="input-group input-group-sm"><input type="number" id="allowance" class="form-control" placeholder="0"><span class="input-group-text">¥</span></div></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col">
+                        <div class="card summary-card h-100">
+                            <div class="card-body p-3 d-flex flex-column">
+                                <div class="d-flex justify-content-between align-items-center"><h5 class="card-title mb-0">合計給与</h5><span class="total-pay"><span id="totalPayDisplay">0</span><span style="font-size: 0.9rem;" class="align-baseline ms-1">¥</span></span></div><hr class="my-1">
+                                <div class="mt-auto">
+                                    <div class="summary-item"><span>合計時間</span><span id="totalHoursDisplay">0.00h</span></div>
+                                    <div class="summary-item mt-2"><span class="summary-item-label">出勤日数</span><span id="workingDaysDisplay">0日</span></div>
+                                    <div class="summary-item mt-1"><span class="summary-item-label">通常時間</span><span id="regularHoursDisplay">0.00h</span></div>
+                                    <div class="summary-item mt-1"><span class="summary-item-label">深夜時間</span><span id="nightHoursDisplay">0.00h</span></div>
+                                    <div class="summary-item mt-1"><span>合計交通費</span><span id="totalTransportDisplay">0¥</span></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-auto">
+                        <div class="d-flex flex-column gap-1 h-100">
+                            <div id="downloadBtn" class="card action-button-card flex-fill"><div class="card-body text-center p-1 d-flex flex-column justify-content-center"><i class="bi bi-download"></i><span id="downloadBtnText">Download</span></div></div>
+                            <div id="printBtn" class="card action-button-card flex-fill"><div class="card-body text-center p-1 d-flex flex-column justify-content-center"><i class="bi bi-printer"></i><span>Print</span></div></div>
+                            <div id="clearBtn" class="card action-button-card flex-fill"><div class="card-body text-center p-1 d-flex flex-column justify-content-center"><i class="bi bi-eraser"></i><span>Clear</span></div></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Content Row (No Changes) -->
+        <div class="row content-row">
+            <div class="col-3 full-height-col">
+                <h5 class="section-title mb-2 ps-1">勤務記録の入力</h5>
+                <div class="card card-stretch">
+                    <div class="card-body d-flex flex-column p-3">
+                        <div>
+                            <label class="form-label">社員名</label><input type="text" id="employeeName" class="form-control form-control-sm mb-2" placeholder="山田 太郎">
+                            <label class="form-label">年月日</label><div class="input-group input-group-sm mb-2"><input type="date" id="recordDate" class="form-control"></div>
+                            <div class="row gx-2 mb-2">
+                                <div class="col-6"><label class="form-label">出勤</label><div class="input-group input-group-sm"><input type="time" id="clockIn" class="form-control" step="60"></div></div>
+                                <div class="col-6"><label class="form-label">退勤</label><div class="input-group input-group-sm"><input type="time" id="clockOut" class="form-control" step="60"></div></div>
+                            </div>
+                             <div class="row gx-2">
+                                <div class="col-6"><label class="form-label">休憩開始</label><div class="input-group input-group-sm"><input type="time" id="breakStart" class="form-control" step="60"></div></div>
+                                <div class="col-6"><label class="form-label">休憩終了</label><div class="input-group input-group-sm"><input type="time" id="breakEnd" class="form-control" step="60"></div></div>
+                            </div>
+                        </div>
+                        <button id="addRecordBtn" class="btn btn-primary w-100 mt-auto py-2">記録に追加</button>
+                    </div>
+                </div>
+            </div>
+            <div class="col-9 full-height-col">
+                <div class="row">
+                    <div class="col-6"><h6 class="section-title mb-2 ps-1">前半勤務詳細 (1日-15日)</h6></div>
+                    <div class="col-6 "><h6 class="section-title mb-2 ps-1">後半勤務詳細 (16日-月末)</h6></div>
+                </div>
+                <div class="row flex-grow-1" style="min-height:0;">
+                    <div class="col-6 full-height-col "><div class="card card-stretch"><div class="card-body card-body-scrollable p-3 rounded"><table class="table table-hover log-table mb-0"><thead class="table"><tr><th>日付</th><th>勤務時間</th><th>休憩</th><th>合計</th><th></th></tr></thead><tbody id="firstHalfTbody"></tbody></table></div></div></div>
+                    <div class="col-6 full-height-col"><div class="card card-stretch"><div class="card-body card-body-scrollable p-2 rounded"><table class="table table-hover log-table mb-0"><thead class="table-"><tr><th>日付</th><th>勤務時間</th><th>休憩</th><th>合計</th><th></th></tr></thead><tbody id="secondHalfTbody"></tbody></table></div></div></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- This div is hidden off-screen and used as a template for the PDF generation -->
+    <div id="pdf-content" style="position: absolute; left: -9999px; width: 210mm; padding: 10mm; background-color: white; color: black; font-family: 'Helvetica', 'Arial', 'sans-serif';">
+    </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+
+    // --- DOM Element Selection (No Changes) ---
+    const regularRateInput = document.getElementById('regularRate');
+    const nightRateInput = document.getElementById('nightRate');
+    const transportFeeInput = document.getElementById('transportFee');
+    const allowanceInput = document.getElementById('allowance');
+    const startDateInput = document.getElementById('startDate');
+    const endDateInput = document.getElementById('endDate');
+    const dateInput = document.getElementById('recordDate');
+    const clockInInput = document.getElementById('clockIn');
+    const clockOutInput = document.getElementById('clockOut');
+    const breakStartInput = document.getElementById('breakStart');
+    const breakEndInput = document.getElementById('breakEnd');
+    const employeeNameInput = document.getElementById('employeeName');
+    const addRecordBtn = document.getElementById('addRecordBtn');
+    const clearBtn = document.getElementById('clearBtn');
+    const printBtn = document.getElementById('printBtn');
+    const downloadBtn = document.getElementById('downloadBtn');
+    const downloadBtnText = document.getElementById('downloadBtnText');
+    const firstHalfTbody = document.getElementById('firstHalfTbody');
+    const secondHalfTbody = document.getElementById('secondHalfTbody');
+    const totalPayDisplay = document.getElementById('totalPayDisplay');
+    const totalHoursDisplay = document.getElementById('totalHoursDisplay');
+    const workingDaysDisplay = document.getElementById('workingDaysDisplay');
+    const regularHoursDisplay = document.getElementById('regularHoursDisplay');
+    const nightHoursDisplay = document.getElementById('nightHoursDisplay');
+    const totalTransportDisplay = document.getElementById('totalTransportDisplay');
+
+    // --- State, Save, Load, Helpers, Calculations, Render, Summary, Handlers (No Changes) ---
+    let workRecords = JSON.parse(localStorage.getItem('salaryRecords_v2')) || [];
+    const saveData = () => { localStorage.setItem('salaryRecords_v2', JSON.stringify(workRecords)); const settings = { regularRate: regularRateInput.value, nightRate: nightRateInput.value, transportFee: transportFeeInput.value, allowance: allowanceInput.value, employeeName: employeeNameInput.value, startDate: startDateInput.value, endDate: endDateInput.value }; localStorage.setItem('salarySettings_v2', JSON.stringify(settings)); };
+    const loadSettings = () => { const settings = JSON.parse(localStorage.getItem('salarySettings_v2')); if (settings) { regularRateInput.value = settings.regularRate || ''; nightRateInput.value = settings.nightRate || ''; transportFeeInput.value = settings.transportFee || ''; allowanceInput.value = settings.allowance || ''; employeeNameInput.value = settings.employeeName || ''; startDateInput.value = settings.startDate || ''; endDateInput.value = settings.endDate || ''; } };
+    const timeToMinutes = (timeStr) => { if (!timeStr) return 0; const parts = timeStr.split(':'); const hours = parseInt(parts[0], 10) || 0; const minutes = parseInt(parts[1], 10) || 0; return hours * 60 + minutes; };
+    const minutesToHours = (minutes) => { if (minutes <= 0) return '0.00h'; const hours = minutes / 60; return `${hours.toFixed(2)}h`; };
+    const calculateRecordDetails = (record) => { let clockInMins = timeToMinutes(record.clockIn); let clockOutMins = timeToMinutes(record.clockOut); let breakStartMins = timeToMinutes(record.breakStart); let breakEndMins = timeToMinutes(record.breakEnd); if (clockOutMins < clockInMins) clockOutMins += 24 * 60; if (breakStartMins && breakStartMins < clockInMins) breakStartMins += 24 * 60; if (breakEndMins && breakEndMins < breakStartMins) breakEndMins += 24 * 60; const breakDurationMins = (breakStartMins && breakEndMins) ? Math.max(0, breakEndMins - breakStartMins) : 0; const nightStartMins = 22 * 60; const nightEndMins = (5 + 24) * 60; const getOverlap = (start1, end1, start2, end2) => Math.max(0, Math.min(end1, end2) - Math.max(start1, start2)); let totalNightMins = getOverlap(clockInMins, clockOutMins, nightStartMins, nightEndMins); let nightBreakMins = (breakDurationMins > 0) ? getOverlap(breakStartMins, breakEndMins, nightStartMins, nightEndMins) : 0; const paidNightMins = totalNightMins - nightBreakMins; const paidTotalMins = (clockOutMins - clockInMins) - breakDurationMins; const paidRegularMins = paidTotalMins - paidNightMins; return { total: paidTotalMins, regular: paidRegularMins, night: paidNightMins, break: breakDurationMins }; };
+    const render = () => { firstHalfTbody.innerHTML = ''; secondHalfTbody.innerHTML = ''; workRecords.sort((a, b) => new Date(a.date) - new Date(b.date)); if (workRecords.length === 0) { const emptyRow = `<tr><td colspan="5" class="text-center text-muted py-5">まだ登録されていません</td></tr>`; firstHalfTbody.innerHTML = emptyRow; secondHalfTbody.innerHTML = emptyRow; } else { workRecords.forEach(record => { const dateObj = new Date(record.date + 'T00:00:00'); const dayOfMonth = dateObj.getDate(); const details = calculateRecordDetails(record); const tableRow = document.createElement('tr'); tableRow.dataset.id = record.id; const displayDate = `${dateObj.getMonth() + 1}月/${dayOfMonth}日`; if (details.total < (5 * 60)) { tableRow.style.color = 'red'; } tableRow.innerHTML = `<td class="ps-2">${displayDate}</td><td>${record.clockIn}-${record.clockOut}</td><td>${minutesToHours(details.break)}</td><td>${minutesToHours(details.total)}</td><td class="pe-2 text-center"><i class="bi bi-trash delete-btn"></i></td>`; if (dayOfMonth <= 15) { firstHalfTbody.appendChild(tableRow); } else { secondHalfTbody.appendChild(tableRow); } }); if (firstHalfTbody.children.length === 0) firstHalfTbody.innerHTML = `<tr><td colspan="5" class="text-center text-muted py-5">まだ登録されていません</td></tr>`; if (secondHalfTbody.children.length === 0) secondHalfTbody.innerHTML = `<tr><td colspan="5" class="text-center text-muted py-5">まだ登録されていません</td></tr>`; } updateSummary(); saveData(); };
+    const updateSummary = () => { let totalMins = 0, totalRegularMins = 0, totalNightMins = 0, totalTransportPay = 0; const transportFee = parseFloat(transportFeeInput.value) || 0; workRecords.forEach(record => { const details = calculateRecordDetails(record); totalMins += details.total; totalRegularMins += details.regular; totalNightMins += details.night; if (details.total >= (5 * 60)) { totalTransportPay += transportFee; } }); const workingDays = workRecords.length; if (workingDaysDisplay) { workingDaysDisplay.textContent = `${workingDays}日`; } const regularRate = parseFloat(regularRateInput.value) || 0; const nightRate = parseFloat(nightRateInput.value) || 0; const allowance = parseFloat(allowanceInput.value) || 0; const regularPay = (totalRegularMins / 60) * regularRate; const nightPay = (totalNightMins / 60) * nightRate; const totalPay = regularPay + nightPay + totalTransportPay + allowance; totalHoursDisplay.textContent = minutesToHours(totalMins); regularHoursDisplay.textContent = minutesToHours(totalRegularMins); nightHoursDisplay.textContent = minutesToHours(totalNightMins); totalTransportDisplay.textContent = `${Math.round(totalTransportPay).toLocaleString()}¥`; totalPayDisplay.textContent = `${Math.round(totalPay).toLocaleString()}`; };
+    const handleAddRecord = () => { const dateVal = dateInput.value; const clockInVal = clockInInput.value; const clockOutVal = clockOutInput.value; if (!dateVal || !clockInVal || !clockOutVal) { alert('年月日、出勤、退勤は必須です。'); return; } let clockInMins = timeToMinutes(clockInVal); let clockOutMins = timeToMinutes(clockOutVal); if (clockOutMins < clockInMins) { clockOutMins += 24 * 60; } if (clockOutMins - clockInMins < 1) { alert('出勤時間が正しく入力してください'); return; } const newRecord = { id: Date.now(), date: dateVal, clockIn: clockInVal, clockOut: clockOutVal, breakStart: breakStartInput.value, breakEnd: breakEndInput.value }; workRecords.push(newRecord); render(); dateInput.value = ''; clockInInput.value = ''; clockOutInput.value = ''; breakStartInput.value = ''; breakEndInput.value = ''; dateInput.focus(); };
+    const handleDeleteRecord = (e) => { if (e.target.classList.contains('delete-btn')) { const row = e.target.closest('tr'); if (confirm('この記録を削除しますか？')) { workRecords = workRecords.filter(record => record.id !== Number(row.dataset.id)); render(); } } };
+    const handleClearAll = () => { if (confirm('すべての記録と設定を消去しますか？この操作は元に戻せません。')) { workRecords = []; localStorage.removeItem('salaryRecords_v2'); localStorage.removeItem('salarySettings_v2'); window.location.reload(); } };
+
+    // --- PDF Download Handler (Completely New Logic) ---
+    const handleDownloadPdf = async () => {
+        const pdfContentEl = document.getElementById('pdf-content');
+        if (!pdfContentEl) return;
+
+        downloadBtn.style.pointerEvents = 'none';
+        downloadBtnText.textContent = '作成中...';
+
+        try {
+            // 1. Get all data from the UI
+            const employeeName = employeeNameInput.value || '未設定';
+            const period = (startDateInput.value && endDateInput.value) 
+                ? `${startDateInput.value.replace(/-/g, '/')} - ${endDateInput.value.replace(/-/g, '/')}`
+                : '期間未設定';
+            const regularRate = `${(parseFloat(regularRateInput.value) || 0).toLocaleString()} ¥`;
+            const nightRate = `${(parseFloat(nightRateInput.value) || 0).toLocaleString()} ¥`;
+            const transportFee = `${(parseFloat(transportFeeInput.value) || 0).toLocaleString()} ¥`;
+
+            // 2. Build the detailed work log table HTML
+            let recordsHtml = '';
+            workRecords.forEach(record => {
+                const details = calculateRecordDetails(record);
+                const dateObj = new Date(record.date + 'T00:00:00');
+                const displayDate = `${dateObj.getFullYear()}/${dateObj.getMonth() + 1}/${dateObj.getDate()}`;
+                recordsHtml += `
+                    <tr>
+                        <td>${displayDate}</td>
+                        <td>${record.clockIn} - ${record.clockOut}</td>
+                        <td>${minutesToHours(details.break)}</td>
+                        <td>${minutesToHours(details.total)}</td>
+                    </tr>
+                `;
+            });
+            if (workRecords.length === 0) {
+                recordsHtml = '<tr><td colspan="4" style="text-align:center; padding: 20px;">勤務記録がありません</td></tr>';
+            }
+
+            // 3. Assemble the complete PDF structure based on your desired format
+            pdfContentEl.innerHTML = `
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px;">
+                    <div>
+                        <h1 style="font-size: 28pt; margin: 0;">給与明細</h1>
+                        <p style="font-size: 12pt; margin-top: 15px;">社員名: <span style="font-size: 14pt; font-weight: bold; margin-left: 10px;">${employeeName}</span></p>
+                    </div>
+                    <table style="font-size: 9pt; border-spacing: 0 5px; text-align: right;">
+                        <tr><td style="padding-right: 10px;">通常時給:</td><td style="font-weight: bold;">${regularRate}</td></tr>
+                        <tr><td style="padding-right: 10px;">深夜時給:</td><td style="font-weight: bold;">${nightRate}</td></tr>
+                        <tr><td style="padding-right: 10px;">計算期間:</td><td style="font-weight: bold;">${period}</td></tr>
+                        <tr><td style="padding-right: 10px;">交通費(日額):</td><td style="font-weight: bold;">${transportFee}</td></tr>
+                    </table>
+                </div>
+
+                <h2 style="font-size: 14pt; border-bottom: 2px solid #333; padding-bottom: 5px;">月勤務詳細</h2>
+                <table class="pdf-table">
+                    <thead>
+                        <tr><th style="width: 25%;">日付</th><th style="width: 30%;">勤務時間</th><th style="width: 20%;">休憩</th><th style="width: 25%;">合計時間</th></tr>
+                    </thead>
+                    <tbody>${recordsHtml}</tbody>
+                </table>
+                
+                <div style="margin-top: 30px; border-top: 2px solid #333; padding-top: 15px;">
+                    <table style="width: 100%; font-size: 11pt;">
+                        <tr>
+                            <td style="width: 15%;">通常時間:</td><td style="width: 35%; font-weight: bold;">${regularHoursDisplay.textContent}</td>
+                            <td style="width: 15%;">合計時間:</td><td style="width: 35%; font-weight: bold;">${totalHoursDisplay.textContent}</td>
+                        </tr>
+                        <tr>
+                            <td>深夜時間:</td><td style="font-weight: bold;">${nightHoursDisplay.textContent}</td>
+                            <td>合計交通費:</td><td style="font-weight: bold;">${totalTransportDisplay.textContent}</td>
+                        </tr>
+                        <tr><td colspan="4" style="height: 15px;"></td></tr>
+                        <tr>
+                            <td style="font-size: 14pt;">合計給与:</td>
+                            <td colspan="3" style="font-size: 22pt; font-weight: bold; text-align: right;">${totalPayDisplay.textContent} ¥</td>
+                        </tr>
+                    </table>
+                </div>
+            `;
+
+            // 4. Generate PDF from the template
+            const { jsPDF } = window.jspdf;
+            const canvas = await html2canvas(pdfContentEl, { scale: 2 });
+            const imgData = canvas.toDataURL('image/png');
+            
+            const pdf = new jsPDF('p', 'mm', 'a4');
+            const pdfWidth = pdf.internal.pageSize.getWidth();
+            const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+            
+            pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+            
+            const fileName = `給与明細_${employeeName.replace(/\s/g, '')}_${new Date().toISOString().slice(0,10)}.pdf`;
+            pdf.save(fileName);
+
+        } catch (error) {
+            console.error("PDF生成中にエラーが発生しました:", error);
+            alert("PDFの生成に失敗しました。コンソールを確認してください。");
+        } finally {
+            downloadBtn.style.pointerEvents = 'auto';
+            downloadBtnText.textContent = 'Download';
+        }
+    };
+
+    // --- Attach Event Listeners ---
+    addRecordBtn.addEventListener('click', handleAddRecord);
+    clearBtn.addEventListener('click', handleClearAll);
+    printBtn.addEventListener('click', () => window.print());
+    downloadBtn.addEventListener('click', handleDownloadPdf);
+    firstHalfTbody.addEventListener('click', handleDeleteRecord);
+    secondHalfTbody.addEventListener('click', handleDeleteRecord);
+    document.querySelectorAll('#regularRate, #nightRate, #transportFee, #allowance, #employeeName, #startDate, #endDate').forEach(input => {
+        input.addEventListener('input', () => { updateSummary(); saveData(); });
+    });
+
+    // --- Initial Load ---
+    loadSettings();
+    render();
+});
+</script>
+
+</body>
+</html>
